@@ -272,26 +272,54 @@ async fn get_settings() -> Result<Settings, String> {
         let settings_json =
             serde_json::to_string_pretty(&new_settings).map_err(|e| e.to_string())?;
         fs::write(&settings_path, settings_json).map_err(|e| e.to_string())?;
+        log::info!("[Settings] New settings file created at: {:?}", settings_path);
+        
 
         new_settings
     };
+
+    log::info!(
+            "[Settings] New settings: {}",
+            serde_json::to_string_pretty(&settings).unwrap_or_default()
+        );
 
     Ok(settings)
 }
 
 /// Gets the path to the save file directory.
 fn get_save_file_path() -> PathBuf {
-    let path: PathBuf = dirs::data_local_dir()
-        .ok_or("Could not get local data directory")
-        .unwrap()
-        .join("RotMG Stash");
+    #[cfg(target_os = "android")]
+    let path: PathBuf = {
+        // Path for Android: /data/data/com.rotmg_stash.app/files/RotMG Stash
+        // Replace "com.rotmg_stash.app" with your actual application ID if it's different.
+        let base_dir = PathBuf::from("/data/data/com.rotmg_stash.app/files");
 
-    if !path.exists() {
-        log::info!("[Settings] Creating directory: {:?}", path);
-        fs::create_dir_all(&path)
-            .map_err(|e| format!("Failed to create directory: {}", e))
-            .unwrap();
-    }
+        if !base_dir.exists() {
+            log::info!("[Settings] Creating directory for Android: {:?}", base_dir);
+            if let Err(e) = fs::create_dir_all(&base_dir) {
+                log::error!("Failed to create directory on Android: {}. Using current dir as fallback.", e);
+                // Fallback to current directory or handle error more gracefully
+                return PathBuf::from(".");
+            }
+        }
+        base_dir
+    };
+
+    #[cfg(not(target_os = "android"))]
+    let path: PathBuf = {
+        let local_data_dir = dirs::data_local_dir()
+            .ok_or("Could not get local data directory")
+            .unwrap(); // Consider handling this error more gracefully than unwrap
+        let app_data_path = local_data_dir.join("RotMG Stash");
+
+        if !app_data_path.exists() {
+            log::info!("[Settings] Creating directory: {:?}", app_data_path);
+            fs::create_dir_all(&app_data_path)
+                .map_err(|e| format!("Failed to create directory: {}", e))
+                .unwrap(); // Consider handling this error more gracefully than unwrap
+        }
+        app_data_path
+    };
 
     path
 }
